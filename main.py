@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS movies (
 """)
 
 db.commit()
-# ==============================================
 
 # =================== OBUNA TEKSHIRISH ===================
 async def check_sub(user_id: int) -> bool:
@@ -49,6 +48,7 @@ async def check_sub(user_id: int) -> bool:
         return member.status in ("member", "administrator", "creator")
     except:
         return False
+
 
 # =================== START ===================
 @dp.message(F.text.startswith("/start"))
@@ -71,12 +71,11 @@ async def start(msg: Message):
     if not await check_sub(user.id):
         await msg.answer(
             f"Salom {user.full_name} 👋\n\n"
-            f"Botdan foydalanish uchun rasmiy kanalimizga obuna bo‘lishingiz kerak ❗️",
+            "Botdan foydalanish uchun kanalga obuna bo‘ling ❗️",
             reply_markup=kb_sub.as_markup()
         )
         return
 
-    # user bazaga
     cur.execute(
         "INSERT OR IGNORE INTO users VALUES (?,?)",
         (user.id, user.username)
@@ -85,18 +84,17 @@ async def start(msg: Message):
 
     await bot.send_message(
         ADMIN_ID,
-        f"🆕 Yangi foydalanuvchi\n"
-        f"👤 {user.full_name}\n"
-        f"🆔 {user.id}"
+        f"🆕 Yangi foydalanuvchi\n👤 {user.full_name}\n🆔 {user.id}"
     )
 
-    # deep link orqali kino
+    # deep link kino
     if start_code and start_code.isdigit():
         cur.execute(
             "SELECT title, file_id FROM movies WHERE code=?",
             (start_code,)
         )
         m = cur.fetchone()
+
         if m:
             await bot.send_video(
                 user.id,
@@ -112,26 +110,20 @@ async def start(msg: Message):
 
     await msg.answer(
         f"🎬 Xush kelibsiz, {user.full_name}!\n\n"
-        f"Inline qidiruv orqali kinolarni toping yoki 3 xonali kod yuboring.",
+        "Kino kodini yuboring yoki inline qidiruvdan foydalaning.",
         reply_markup=kb_main.as_markup()
     )
+
 
 # =================== TEKSHIRISH ===================
 @dp.callback_query(F.data == "check_sub")
 async def check_subscription(call: CallbackQuery):
     if await check_sub(call.from_user.id):
         await call.message.delete()
-        await start(
-            Message(
-                message_id=call.message.message_id,
-                date=call.message.date,
-                chat=call.message.chat,
-                from_user=call.from_user,
-                text="/start"
-            )
-        )
+        await call.message.answer("✅ Obuna tasdiqlandi. /start ni bosing")
     else:
         await call.answer("❌ Avval kanalga obuna bo‘ling", show_alert=True)
+
 
 # =================== INLINE QIDIRUV ===================
 @dp.inline_query()
@@ -139,7 +131,7 @@ async def inline_search(query: InlineQuery):
     text = query.query.strip()
 
     cur.execute(
-        "SELECT code, title FROM movies WHERE title LIKE ? LIMIT 50",
+        "SELECT code, title FROM movies WHERE title LIKE ? LIMIT 20",
         (f"%{text}%",)
     )
     movies = cur.fetchall()
@@ -150,7 +142,7 @@ async def inline_search(query: InlineQuery):
             InlineQueryResultArticle(
                 id=code,
                 title=title,
-                description=f"Kodni yuborib tomosha qiling: {code}",
+                description=f"Kod: {code}",
                 input_message_content=InputTextMessageContent(
                     message_text=code
                 )
@@ -159,51 +151,33 @@ async def inline_search(query: InlineQuery):
 
     await query.answer(results, cache_time=1, is_personal=True)
 
+
 # =================== KOD ORQALI KINO ===================
-@dp.message(F.text.regexp(r"^\d{2,100}$"))
+@dp.message(F.text.regexp(r"^\d{2,6}$"))
 async def by_code(msg: Message):
 
     if not await check_sub(msg.from_user.id):
-        await msg.answer("❗ Avval obuna bo‘ling")
+        await msg.answer("❗ Avval kanalga obuna bo‘ling")
         return
 
     code = msg.text.strip()
 
-    cur.execute("SELECT id, title, file_id FROM movies WHERE code=?", (code,))
+    cur.execute(
+        "SELECT title, file_id FROM movies WHERE code=?",
+        (code,)
+    )
     movie = cur.fetchone()
 
     if not movie:
         await msg.answer("❌ Topilmadi")
         return
 
-    kb = InlineKeyboardBuilder()
-    kb.button(text="💾 Saqlash", callback_data=f"save_movie_{movie[0]}")
-    kb.adjust(1)
-
-    await bot.send_video(
-        msg.chat.id,
-        movie[2],
-        caption=f"🎬 {movie[1]}\n🔢 Kod: {code}",
-        reply_markup=kb.as_markup()
-    )
-    if not await check_sub(msg.from_user.id):
-        return
-
-    cur.execute(
-        "SELECT title, file_id FROM movies WHERE code=?",
-        (msg.text,)
-    )
-    movie = cur.fetchone()
-
-    if not movie:
-        await msg.answer("❌ Bu kodda kino topilmadi")
-        return
-
     await bot.send_video(
         msg.chat.id,
         movie[1],
-        caption=f"🎬 {movie[0]}\n🔢 Kod: {msg.text}"
+        caption=f"🎬 {movie[0]}\n🔢 Kod: {code}"
     )
+
 
 # =================== ADMIN PANEL ===================
 @dp.message(F.text == "/panel")
@@ -220,11 +194,8 @@ async def panel(msg: Message):
 
     await msg.answer("🛠 Admin panel", reply_markup=kb.as_markup())
 
-# =================== KINO QO‘SHISH ===================
-@dp.callback_query(F.data == "add")
-async def add_info(call: CallbackQuery):
-    await call.message.answer("🎬 Video yuboring:\n`001|Kino nomi`")
 
+# =================== KINO QO‘SHISH ===================
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def add_movie(msg: Message):
     if not msg.caption or "|" not in msg.caption:
@@ -232,6 +203,7 @@ async def add_movie(msg: Message):
         return
 
     code, title = msg.caption.split("|", 1)
+
     try:
         cur.execute(
             "INSERT INTO movies (code,title,file_id) VALUES (?,?,?)",
@@ -242,7 +214,8 @@ async def add_movie(msg: Message):
     except:
         await msg.answer("❌ Bu kod mavjud")
 
-# =================== KINO O‘CHIRISH ===================
+
+# =================== O‘CHIRISH ===================
 @dp.callback_query(F.data == "del")
 async def del_list(call: CallbackQuery):
     cur.execute("SELECT id,title FROM movies")
@@ -255,6 +228,7 @@ async def del_list(call: CallbackQuery):
 
     await call.message.answer("O‘chirish uchun tanlang:", reply_markup=kb.as_markup())
 
+
 @dp.callback_query(F.data.startswith("d_"))
 async def delete(call: CallbackQuery):
     mid = int(call.data.split("_")[1])
@@ -262,38 +236,40 @@ async def delete(call: CallbackQuery):
     db.commit()
     await call.message.edit_text("✅ O‘chirildi")
 
+
 # =================== STATISTIKA ===================
 @dp.callback_query(F.data == "stat")
 async def stat(call: CallbackQuery):
     cur.execute("SELECT COUNT(*) FROM users")
     users = cur.fetchone()[0]
+
     cur.execute("SELECT COUNT(*) FROM movies")
     movies = cur.fetchone()[0]
 
     await call.message.answer(
-        f"📊 Statistika\n"
-        f"👥 Foydalanuvchilar: {users}\n"
-        f"🎬 Kinolar: {movies}"
+        f"📊 Statistika\n👥 Foydalanuvchilar: {users}\n🎬 Kinolar: {movies}"
     )
 
-# =================== BROADCAST ===================
-@dp.callback_query(F.data == "send")
-async def send_info(call: CallbackQuery):
-    await call.message.answer("📢 Yuboriladigan xabarni yozing:")
 
-@dp.message(F.from_user.id == ADMIN_ID)
+# =================== BROADCAST (TOZALANDI) ===================
+@dp.message(F.text.startswith("/sendall"))
 async def broadcast(msg: Message):
-    if msg.text.startswith("/"):
+    if msg.from_user.id != ADMIN_ID:
         return
 
+    text = msg.text.replace("/sendall", "").strip()
+
     cur.execute("SELECT user_id FROM users")
-    for (uid,) in cur.fetchall():
+    users = cur.fetchall()
+
+    for (uid,) in users:
         try:
-            await bot.send_message(uid, msg.text)
+            await bot.send_message(uid, text)
         except:
             pass
 
     await msg.answer("✅ Xabar yuborildi")
+
 
 # =================== RUN ===================
 async def main():
