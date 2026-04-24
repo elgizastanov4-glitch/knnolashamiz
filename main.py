@@ -2,31 +2,23 @@ import asyncio
 import sqlite3
 import os
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import (
-    Message,
-    InlineQuery,
-    InlineQueryResultArticle,
-    InputTextMessageContent,
-    CallbackQuery
-)
+from aiogram.types import *
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # =================== SOZLAMALAR ===================
 BOT_TOKEN = "8335969395:AAElrgYcf3vkFDoNi7st_NFAjnTmeUpeZ8U"
 ADMIN_ID = 6884014716
 CHANNEL_USERNAME = "@kinolashamz"
-# ================================================
+START_IMAGE_PATH = "start.jpg"
 
 bot = Bot(BOT_TOKEN)
 dp = Dispatcher()
 
-# 🔥 MUHIM: /tmp ga yozamiz
-DB_PATH = "/tmp/kino.db"
-
+# =================== DATABASE ======================
+DB_PATH = "kino.db"   # 🔥 FIX: endi doimiy fayl
 db = sqlite3.connect(DB_PATH)
 cur = db.cursor()
 
-# =================== DATABASE ===================
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -43,168 +35,150 @@ CREATE TABLE IF NOT EXISTS movies (
 )
 """)
 
-db.commit()
-# ==============================================
+cur.execute("""
+CREATE TABLE IF NOT EXISTS serials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE,
+    title TEXT,
+    file_id TEXT
+)
+""")
 
-# =================== OBUNA TEKSHIRISH ===================
-async def check_sub(user_id: int) -> bool:
+cur.execute("""
+CREATE TABLE IF NOT EXISTS saved (
+    user_id INTEGER,
+    movie_id TEXT
+)
+""")
+db.commit()
+
+# =================== OBUNA ===================
+async def check_sub(user_id):
     try:
         member = await bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return member.status in ("member", "administrator", "creator")
+        return member.status in ["member", "administrator", "creator"]
     except:
         return False
+
+dp.data = {}
 
 # =================== START ===================
 @dp.message(F.text.startswith("/start"))
 async def start(msg: Message):
-    user = msg.from_user
-    args = msg.text.split(maxsplit=1)
-    start_code = args[1] if len(args) > 1 else None
+    args = msg.text.split()
+    code = args[1] if len(args) > 1 else None
 
-    kb_sub = InlineKeyboardBuilder()
-    kb_sub.button(
-        text="📢 Kanalga obuna bo‘lish",
-        url=f"https://t.me/{CHANNEL_USERNAME[1:]}"
-    )
-    kb_sub.button(
-        text="✅ Tekshirish",
-        callback_data="check_sub"
-    )
-    kb_sub.adjust(1)
-
-    if not await check_sub(user.id):
-        await msg.answer(
-            f"Salom {user.full_name} 👋\n\n"
-            f"Botdan foydalanish uchun kanalga obuna bo‘ling ❗️",
-            reply_markup=kb_sub.as_markup()
-        )
+    if not await check_sub(msg.from_user.id):
+        kb = InlineKeyboardBuilder()
+        kb.button(text="📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")
+        kb.button(text="✅ Tekshirish", callback_data="check_sub")
+        kb.adjust(2)
+        await msg.answer("❗ Avval kanalga obuna bo‘ling", reply_markup=kb.as_markup())
         return
 
-    cur.execute(
-        "INSERT OR IGNORE INTO users VALUES (?,?)",
-        (user.id, user.username)
-    )
+    cur.execute("INSERT OR IGNORE INTO users VALUES (?,?)",
+                (msg.from_user.id, msg.from_user.username))
     db.commit()
 
-    await bot.send_message(
-        ADMIN_ID,
-        f"🆕 Yangi foydalanuvchi\n👤 {user.full_name}\n🆔 {user.id}"
-    )
+    # 🔥 LINK ORQALI KINO
+    if code:
+        cur.execute("SELECT title,file_id FROM movies WHERE code=?", (code,))
+        movie = cur.fetchone()
+        if movie:
+            await bot.send_video(msg.chat.id, movie[1], caption=f"🎬 {movie[0]}")
+            return
 
-    if start_code and start_code.isdigit():
-        cur.execute(
-            "SELECT title, file_id FROM movies WHERE code=?",
-            (start_code,)
-        )
-        m = cur.fetchone()
-        if m:
-            await bot.send_video(
-                user.id,
-                m[1],
-                caption=f"🎬 {m[0]}\n🔢 Kod: {start_code}"
-            )
-
-    kb_main = InlineKeyboardBuilder()
-    kb_main.button(
-        text="🔍 Inline qidiruv",
-        switch_inline_query_current_chat=""
-    )
-
-    await msg.answer(
-        f"🎬 Xush kelibsiz, {user.full_name}!",
-        reply_markup=kb_main.as_markup()
-    )
-
-# =================== TEKSHIRISH ===================
-@dp.callback_query(F.data == "check_sub")
-async def check_subscription(call: CallbackQuery):
-    if await check_sub(call.from_user.id):
-        await call.message.delete()
-        await start(call.message)
-    else:
-        await call.answer("❌ Obuna bo‘ling", show_alert=True)
+    await msg.answer("👋 Xush kelibsiz!")
 
 # =================== INLINE ===================
 @dp.inline_query()
 async def inline_search(query: InlineQuery):
-    text = query.query.strip()
-
-    cur.execute(
-        "SELECT code, title FROM movies WHERE title LIKE ? LIMIT 50",
-        (f"%{text}%",)
-    )
-    movies = cur.fetchall()
-
+    text = query.query
     results = []
-    for code, title in movies:
+
+    cur.execute("SELECT id,title,file_id FROM movies WHERE title LIKE ?", (f"%{text}%",))
+    for m in cur.fetchall():
         results.append(
-            InlineQueryResultArticle(
-                id=code,
-                title=title,
-                description=f"Kod: {code}",
-                input_message_content=InputTextMessageContent(
-                    message_text=code
-                )
+            InlineQueryResultCachedVideo(
+                id=str(m[0]),
+                video_file_id=m[2],
+                title=m[1]
             )
         )
 
     await query.answer(results, cache_time=1)
 
 # =================== KOD ===================
-@dp.message(F.text.regexp(r"^\d{3}$"))
+@dp.message(F.text.regexp(r"^\d{1,15}$"))
 async def by_code(msg: Message):
-    if not await check_sub(msg.from_user.id):
-        return
-
-    cur.execute(
-        "SELECT title, file_id FROM movies WHERE code=?",
-        (msg.text,)
-    )
+    cur.execute("SELECT title,file_id FROM movies WHERE code=?", (msg.text,))
     movie = cur.fetchone()
-
-    if not movie:
+    if movie:
+        await bot.send_video(msg.chat.id, movie[1], caption=f"🎬 {movie[0]}")
+    else:
         await msg.answer("❌ Topilmadi")
-        return
 
-    await bot.send_video(
-        msg.chat.id,
-        movie[1],
-        caption=f"🎬 {movie[0]}\n🔢 {msg.text}"
-    )
-
-# =================== ADMIN ===================
-@dp.message(F.text == "/panel")
-async def panel(msg: Message):
-    if msg.from_user.id != ADMIN_ID:
-        return
-
+# =================== ADMIN PANEL ===================
+@dp.message(F.from_user.id == ADMIN_ID, F.text == "/admin")
+async def admin_panel(msg: Message):
     kb = InlineKeyboardBuilder()
-    kb.button(text="➕ Kino qo‘shish", callback_data="add")
-    kb.adjust(1)
-
+    kb.button(text="🎬 Qo‘shish", callback_data="add")
+    kb.button(text="🗑 O‘chirish", callback_data="del")
+    kb.button(text="✏️ Tahrirlash", callback_data="edit")
+    kb.button(text="📃 Ro‘yxat", callback_data="list")
+    kb.adjust(2)
     await msg.answer("Admin panel", reply_markup=kb.as_markup())
 
-@dp.callback_query(F.data == "add")
-async def add_info(call: CallbackQuery):
-    await call.message.answer("Video yubor: 001|Kino nomi")
-
-@dp.message(F.video & (F.from_user.id == ADMIN_ID))
-async def add_movie(msg: Message):
-    if not msg.caption or "|" not in msg.caption:
-        await msg.answer("Format xato")
+# =================== ADMIN BOSHQARUV ===================
+@dp.callback_query()
+async def admin_actions(call: CallbackQuery):
+    if call.from_user.id != ADMIN_ID:
         return
 
-    code, title = msg.caption.split("|", 1)
+    if call.data == "add":
+        dp.data["mode"] = "add"
+        await call.message.answer("Video yubor: kod|nom")
 
-    try:
-        cur.execute(
-            "INSERT INTO movies (code,title,file_id) VALUES (?,?,?)",
-            (code.strip(), title.strip(), msg.video.file_id)
-        )
+    elif call.data == "del":
+        dp.data["mode"] = "del"
+        await call.message.answer("Kod yubor")
+
+    elif call.data == "edit":
+        dp.data["mode"] = "edit"
+        await call.message.answer("Kod|yangi nom")
+
+    elif call.data == "list":
+        cur.execute("SELECT code,title FROM movies")
+        data = cur.fetchall()
+        text = "\n".join([f"{c} - {t}" for c, t in data]) or "Bo‘sh"
+        await call.message.answer(text)
+
+# =================== ADMIN UNIVERSAL ===================
+@dp.message(F.from_user.id == ADMIN_ID)
+async def admin_handler(msg: Message):
+    mode = dp.data.get("mode")
+
+    if mode == "add" and msg.video:
+        code, title = msg.caption.split("|")
+        cur.execute("INSERT INTO movies (code,title,file_id) VALUES (?,?,?)",
+                    (code.strip(), title.strip(), msg.video.file_id))
         db.commit()
         await msg.answer("✅ Qo‘shildi")
-    except:
-        await msg.answer("❌ Kod mavjud")
+        dp.data["mode"] = None
+
+    elif mode == "del":
+        cur.execute("DELETE FROM movies WHERE code=?", (msg.text,))
+        db.commit()
+        await msg.answer("✅ O‘chirildi")
+        dp.data["mode"] = None
+
+    elif mode == "edit":
+        code, title = msg.text.split("|")
+        cur.execute("UPDATE movies SET title=? WHERE code=?",
+                    (title.strip(), code.strip()))
+        db.commit()
+        await msg.answer("✅ Tahrirlandi")
+        dp.data["mode"] = None
 
 # =================== RUN ===================
 async def main():
