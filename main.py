@@ -6,7 +6,7 @@ from aiogram.types import *
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # =================== SOZLAMALAR ===================
-BOT_TOKEN = "8335969395:AAElrgYcf3vkFDoNi7st_NFAjnTmeUpeZ8U"
+BOT_TOKEN = 8335969395:AAElrgYcf3vkFDoNi7st_NFAjnTmeUpeZ8U"
 ADMIN_ID = 6884014716
 CHANNEL_USERNAME = "@kinolashamz"
 START_IMAGE_PATH = "start.jpg"
@@ -15,7 +15,11 @@ bot = Bot(BOT_TOKEN)
 dp = Dispatcher()
 
 # =================== DATABASE ======================
-DB_PATH = "kino.db"   # 🔥 FIX: endi doimiy fayl
+DB_DIR = "data"
+os.makedirs(DB_DIR, exist_ok=True)  # 🔥 papka yaratadi
+
+DB_PATH = os.path.join(DB_DIR, "kino.db")
+
 db = sqlite3.connect(DB_PATH)
 cur = db.cursor()
 
