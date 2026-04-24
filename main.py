@@ -15,7 +15,7 @@ bot = Bot(BOT_TOKEN)
 dp = Dispatcher()
 
 # =================== DATABASE ======================
-DB_DIR = "/tmp/data"  # ✅ tuzatildi
+DB_DIR = "/tmp/data"  # ✅ TUZATILDI
 os.makedirs(DB_DIR, exist_ok=True)
 
 DB_PATH = os.path.join(DB_DIR, "kino.db")
