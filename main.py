@@ -15,8 +15,8 @@ bot = Bot(BOT_TOKEN)
 dp = Dispatcher()
 
 # =================== DATABASE ======================
-DB_DIR = "data"
-os.makedirs(DB_DIR, exist_ok=True)  # 🔥 papka yaratadi
+DB_DIR = "/tmp/data"  # ✅ tuzatildi
+os.makedirs(DB_DIR, exist_ok=True)
 
 DB_PATH = os.path.join(DB_DIR, "kino.db")
 
@@ -84,7 +84,6 @@ async def start(msg: Message):
                 (msg.from_user.id, msg.from_user.username))
     db.commit()
 
-    # 🔥 LINK ORQALI KINO
     if code:
         cur.execute("SELECT title,file_id FROM movies WHERE code=?", (code,))
         movie = cur.fetchone()
