@@ -12,7 +12,7 @@ from aiogram.types import (
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # =================== SOZLAMALAR ===================
-BOT_TOKEN = os.getenv("TOKEN")  # ENV dan olinadi
+BOT_TOKEN = "8335969395:AAElrgYcf3vkFDoNi7st_NFAjnTmeUpeZ8U"
 ADMIN_ID = 6884014716
 CHANNEL_USERNAME = "@kinolashamz"
 # ================================================
