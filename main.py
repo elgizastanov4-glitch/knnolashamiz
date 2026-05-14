@@ -141,7 +141,7 @@ async def inline_search(query: InlineQuery):
     await query.answer(results, cache_time=1)
 
 # =================== KOD ORQALI KINO ===================
-@dp.message(F.text.regexp(r"^\d{3}$"))
+@dp.message(F.text.regexp(r"^\d{3,100}$"))
 async def by_code(msg: Message):
     if not await check_sub(msg.from_user.id):
         await msg.answer("❗ Avval obuna bo‘ling")
